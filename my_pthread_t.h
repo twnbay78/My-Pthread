@@ -1,43 +1,78 @@
 #define MY_PTHREAD_T_H
 #ifndef MY_PTHREAD_T_H
 
-// STRUCTS
+// preprocessor 
+#define T_STACK_SIZE 1048576
+
+// variables 
+extern static unsigned long int tid = 0;
+
+// - - - - - - - STRUCTS - - - - - - - - //
 // Thread Control Block - holds metadata on structs 
 typedef struct _tcb {
 	int tid;
 	int t_priority;
-	ucontext_t* thread_context;
-	struct my_pthread_t* next;
+	char* name; // indicates queue
+	ucontext_t* t_context;
+	long int start_init;
+	long int start_ready;
+	long int start_wait;
+	long int start_exec;
 } my_pthread_t;
 
 typedef struct _tcb_attr {
 
 } pthread_attr_t;
 
-// FUNCTIONS
+// - - - - - - - HELPER FUNCTIONS - - - - - - - //
+
+int exec_thread(my_pthread_t* thread, void *(*function)(void*), void* arg){
+	// execute thread function until termination
+	// set timer for 25 ms quanta
+	struct itimerval exec_timer;
+
+}
+
+
+
+// - - - - - - - THEAD FUNCTIONS - - - - - - - //
 
 // creates a pthread that executes function
 // attr is ignored
 // A my_pthread is passed into the function, the function then 
 int my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr, void *(*function)(void*), void* arg){
-	// initializing 
-	tcb* temp;
-	temp = malloc(sizeof(my_pthread));
-	if(!tmp){
-		printf("Malloc didn't work :(\n");
-		return -1;
+
+	// initialize context
+	if(getcontext(thread->t_context) == -1){
+		fprintf(stderr, "An error has occured: %s\n", strerror(errno));
+		exit(EXIT_FAILURE);
 	}
 
-	// allocating memory for thread_context (is a ptr)
-	memset(&temp, 0, sizeof(my_pthread));
-	temp->thread_context = malloc(sizeof(ucontext_t));
-	if(!tmp->thread_context){
+	// allocating stack for thread
+	thread->uc_stack->ss_sp = (void*)malloc(T_STACK_SIZE);
+	if(!thread->uc_stack->ss_sp){
 		printf("Malloc didn't work :(\n");
-		free(temp);
+		free(thread);
 		return -1;
 	}
+	thread->uc_stack->ss_size = T_STACK_SIZE; 
+	printf("stack allocated\n");
 
-	getcontext(temp->thread_context);
+	// setting my_pthread_t elements
+	thread->tid = ++tid;
+	thread->t_priority = INT_MAX;
+	thread->name = (char*)malloc(sizeof("mth"));
+	thread->name = "mth";
+	printf("Thread initialized\n");
+	
+	// make execution context
+	makecontext(thread->t_context, exec_thread, 3, thread, function, arg);
+	printf("context made and thread executed\n");
+	
+	// enqueue process in MLPQ with highest priority
+	Enqueue(mth_thread, read);
+	printf("thread enqueued\n");
+
 }
 
 // explicit call to the my_pthread_t scheduler requesting that the current context can be swapped out
