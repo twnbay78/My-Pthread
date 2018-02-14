@@ -1,0 +1,4 @@
+# ignore all files that start with '.'
+.*
+# don't ignore .gitignore
+!/.gitignore
