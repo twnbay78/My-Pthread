@@ -93,6 +93,9 @@ typedef struct _tcb {
 	long int start_exec;
 	long int start_ready;
 	long int start_wait;
+	long int total_exec;
+	long int total_ready;
+	long int total_wait;
 	struct _tcb* parent;
 	struct _tcb* next;
 } my_pthread_t;
