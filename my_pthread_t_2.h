@@ -101,7 +101,6 @@ void dequeue(my_pthread_t* head) {
   }
   
 }
-
 void dequeueSpecific(my_pthread_t* head,my_pthread_t* thread) {
   
   my_pthread_t* prev = NULL;

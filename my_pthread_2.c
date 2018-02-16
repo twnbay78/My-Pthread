@@ -21,33 +21,6 @@ int main(int argc, char* argv[]){
  	printMTH(Master);
 }
 
-void intializeBaseQ(MTH* main)
-{
-	my_pthread_t* L1 = malloc(sizeof(my_pthread_t));
- 	my_pthread_t* L2 = malloc(sizeof(my_pthread_t));
- 	my_pthread_t* L3 = malloc(sizeof(my_pthread_t));
- 	my_pthread_t* WaitT = malloc(sizeof(my_pthread_t));
- 	my_pthread_t* CleanerT = malloc(sizeof(my_pthread_t));
-
- 	initQ(WaitT,"Wait Q",Wait);
- 	printf("%s (%d)\n",WaitT->name,WaitT->tid);	
- 	initQ(CleanerT,"Cleaner Q",Cleaner);
- 	printf("%s (%d)\n",CleanerT->name,CleanerT->tid);	
- 	 initQ(L1,"Lowest Q",level1);
- 	printf("%s (%d)\n",L1->name,L1->tid);
- 	 initQ(L2,"Medium Q",level2);
- 	printf("%s (%d)\n",L2->name,L2->tid);
- 	 initQ(L3,"Highest Q",level3);
- 	printf("%s (%d)\n",L3->name,L3->tid);
-
-
-
- 	main->High = L3;
- 	main->Medium = L2;
- 	main->Low = L1;
- 	main->Cleaner = CleanerT;
- 	main->Wait= WaitT;
-}
 /*
  	my_pthread_t* test1 = malloc(sizeof(my_pthread_t));
   	my_pthread_t* test2 = malloc(sizeof(my_pthread_t));

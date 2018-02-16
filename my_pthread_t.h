@@ -118,6 +118,49 @@ typedef struct _MTH{
 
 // - - - - - - - QUEUE FUNCTIONS - - - - - - - //
 
+
+/* Initializes MTH struct including all required queues
+ *
+ */
+void intializeBaseQ(MTH* main)
+{
+	my_pthread_t* L1 = malloc(sizeof(my_pthread_t));
+ 	my_pthread_t* L2 = malloc(sizeof(my_pthread_t));
+ 	my_pthread_t* L3 = malloc(sizeof(my_pthread_t));
+ 	my_pthread_t* WaitT = malloc(sizeof(my_pthread_t));
+ 	my_pthread_t* CleanerT = malloc(sizeof(my_pthread_t));
+
+ 	initQ(WaitT,"Wait Q",Wait);
+ 	printf("%s (%d)\n",WaitT->name,WaitT->tid);	
+ 	initQ(CleanerT,"Cleaner Q",Cleaner);
+ 	printf("%s (%d)\n",CleanerT->name,CleanerT->tid);	
+ 	 initQ(L1,"Lowest Q",level1);
+ 	printf("%s (%d)\n",L1->name,L1->tid);
+ 	 initQ(L2,"Medium Q",level2);
+ 	printf("%s (%d)\n",L2->name,L2->tid);
+ 	 initQ(L3,"Highest Q",level3);
+ 	printf("%s (%d)\n",L3->name,L3->tid);
+
+ 	main->High = L3;
+ 	main->Medium = L2;
+ 	main->Low = L1;
+ 	main->Cleaner = CleanerT;
+ 	main->Wait= WaitT;
+}
+
+/* initializes a queue level 
+ *
+ */
+void initQ(my_pthread_t * lead,char* header,int t){
+  lead->tid = t;
+  lead->t_priority = 0;
+  lead->thread_context = NULL;
+  lead->next = NULL;
+  lead->name = header;
+  lead->parent = NULL;
+ // lead->isTail=false;
+}
+
 // traverses through the queue - idk why this is here
 my_pthread_t* runT(my_pthread_t* head)
 {
@@ -210,6 +253,42 @@ void dequeueSpecific(my_pthread_t* head,my_pthread_t* thread) {
     
   }
   
+}
+
+/* Searches for a thread within the queue and returns the thread
+ *
+ */
+my_pthread_t* seek(my_pthread_t* head, my_pthread_t* findMe)
+{
+  int tempId = findMe->tid;
+   while(head!=NULL)
+  {
+    if(head->tid==tempId)
+      return head;
+     head = head->next;
+   }
+   return NULL;
+
+}
+
+/* INPUT -> destination queue
+ * 	 -> source queue
+ * 	 -> thread
+ * OUTPUT -> destination queue + thread
+ * 	  -> source queue - thread
+ * NOTES -> Leave moveFrom arg NULL if you do not want to dequeue
+ *
+ */
+void move2Q(my_pthread_t* moveTo, my_pthread_t* moveFrom,my_pthread_t* thread)
+{
+  if(thread==NULL)
+    return;
+  if(moveFrom!=NULL)
+  {
+ dequeueSpecific(moveFrom,thread);
+}
+   enqueue(moveTo,thread);
+    
 }
 
 // - - - - - - - FUNCTIONS - - - - - - - //
