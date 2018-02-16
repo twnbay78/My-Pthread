@@ -10,6 +10,8 @@
 #include <limits.h>
 #include <sys/time.h>
 #include <string.h>
+#include <limits.h>
+#include <math.h>
 
 // preprocessor 
 #define EXEC_TIMEOUT 25000
@@ -42,6 +44,21 @@ typedef enum t_state{
 	BLOCKED,
 	TERMINATED,
 }t_state;
+
+// Enum to represent queue types
+enum Queue_Type {
+	MasterThreadHandler = 0, 
+	Wait = 1,
+	Cleaner = 2,
+	level1 = 3,
+	level2 = 4,
+	level3 = 5
+};
+
+// priority value 
+enum special {
+	removal = 26
+};
 
 typedef struct _mutex {
 	
@@ -76,10 +93,123 @@ typedef struct _tcb {
 	long int start_exec;
 	long int start_ready;
 	long int start_wait;
+	struct _tcb* parent;
+	struct _tcb* next;
 } my_pthread_t;
 
 
-// - - - - - - - HELPER FUNCTIONS - - - - - - - //
+/* Special MTH struct that holds all of the queues
+ * high -> 25ms quanta
+ * medium -> 37ms quanta
+ * low -> 50ms quanta
+ * cleaner -> terminated threads that are waiting to be destroyed
+ */
+typedef struct _MTH{
+   my_pthread_t* Low;
+   my_pthread_t* Medium;
+   my_pthread_t* High;
+   my_pthread_t* Wait;
+   my_pthread_t* Cleaner;
+}MTH;
+
+
+// - - - - - - - QUEUE FUNCTIONS - - - - - - - //
+
+// traverses through the queue - idk why this is here
+my_pthread_t* runT(my_pthread_t* head)
+{
+ my_pthread_t* start = head;
+  while(start->next!=NULL)
+    start = start->next;
+return start;
+}
+
+// prints a queue given a ptr to the head
+void printQueue(my_pthread_t* head) {
+  printf("%d, ", head->tid);
+  while (head->next != NULL) {
+    head = head->next;
+    printf("%d, ", head->tid);
+  }
+
+  printf("\n");
+}
+
+/* Adds a thread to the head of a queue
+ * Input -> queue
+ * 	 -> new thread
+ * Output -> queue whose head is the new Thread
+ */
+void enqueue(my_pthread_t* head, my_pthread_t* newThread){
+
+  //pQueue head is the front of the ArrayList with no context that keeps track of the "queue".
+
+  my_pthread_t* ending = runT(head);    //Find end of ArrayList
+  ending->next = newThread;       //Insertion of newThread
+  newThread->next = NULL;
+  newThread->parent = head;
+  //newThread->isTail=true;
+
+}
+
+
+/* Re-prioritize/maintenance utility function - traverses the queue and removes threads with low priority values 
+ * 
+ */
+void dequeuePriority(my_pthread_t* head) {
+  
+  my_pthread_t* prev = NULL;
+  
+  while (head != NULL) {
+    
+    if (head->t_priority == 26) {
+      prev->next = head->next;
+      head->next = NULL;
+      free(head);
+      
+      head = prev->next;
+    }
+    
+    else {
+      prev = head;
+      head = head->next;
+    }
+    
+  }
+  
+}
+
+
+/* Removes specific threads within a queue
+ * 	CASE 1 -> Remove a thread to assign to a different queue due to priority change
+ * 	CASE 2 -> Remove the thread on the tail and place it in the cleanup queue
+ * 	CASE 3 -> Remove the running thread from the end of the high priority queue and place it at the front of the queue due to the thread being yielded (priority does not change)
+ *
+ */
+void dequeueSpecific(my_pthread_t* head,my_pthread_t* thread) {
+  
+  my_pthread_t* prev = NULL;
+  int temp = thread->tid;
+  while (head != NULL) {
+    
+    if (head->tid == temp) {
+      prev->next = head->next;
+      head->next = NULL;
+      //free(head);
+      
+      head = prev->next;
+    }
+    
+    else {
+      prev = head;
+      head = head->next;
+    }
+    
+  }
+  
+}
+
+// - - - - - - - FUNCTIONS - - - - - - - //
 
 // signal handler for interrupted running threads
 void signal_handler (int signum){
@@ -90,6 +220,45 @@ void signal_handler (int signum){
 		exit(EXIT_FAILURE);
 	}
 }
+
+/* Schedule handler to assign different priority levels to threads
+ *
+ */
+void rePrioritize(my_pthread_t* head){
+
+  my_pthread_t* start;
+  my_pthread_t*finalSwapPos;
+  my_pthread_t* maxPosPrev;
+  my_pthread_t* maxPos;
+  if(head->next!=NULL)
+  {
+  start = head;
+  maxPosPrev = head;
+  maxPos = head->next;
+  finalSwapPos = head->next;
+  }
+  //Find max
+  while (head->next != NULL) {
+    if((head->next)->t_priority > maxPos->t_priority)
+      {
+        maxPos = head->next;
+        maxPosPrev = head; 
+      }
+    head = head->next;
+  }
+  //swap
+  my_pthread_t* temp;
+
+  temp = maxPos->next;
+  maxPos->next = finalSwapPos->next;
+  finalSwapPos->next = temp;
+
+  start->next = maxPos;
+  maxPosPrev->next = finalSwapPos;
+
+
+}
+
 
 // Function that executes a thread function
 int exec_thread(my_pthread_t* thread, void *(*function)(void*), void* arg){
@@ -125,6 +294,18 @@ double get_time(){
 	return return_val;
 }
 
+// Creates a thread for testing purposes
+my_pthread_t* createThread(my_pthread_t* Thread,ucontext_t* Context)
+{
+  Thread->tid = rand(); // find a way to assign values
+  Thread->t_priority = INT_MAX; // make priority highest
+  Thread->name = NULL;
+  Thread->thread_context = Context;
+  Thread->next = NULL;
+  Thread->parent = NULL;
+  //Thread->isTail=false;
+  return Thread;
+}
 
 // - - - - - - - THEAD FUNCTIONS - - - - - - - //
 
@@ -182,6 +363,8 @@ void my_pthread_yield(){
 // If the value_ptr isn't NULL, any return value from the thread will be saved
 // FIX RETURN VAL
 void my_pthread_exit(void* value_ptr){
+	// Set state of running thread to YIELD and have a signal handler run
+	// thread.state = EXITED
 }
 
 // Call to the my_pthread_t library ensuring that the calling thread will not continue execution until the one references exits

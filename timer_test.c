@@ -21,19 +21,19 @@ double get_time(){
 // saves main context with getcontext, returns to the main context in func() with setcontext
 int main(int argc, char* argv[]){
 	struct itimerval exec_timer;
-
+	
 	if(signal(SIGALRM, (void(*)(int)) signal_handler) == SIG_ERR){
 		fprintf(stderr, "An error has occured: %s\n: ", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-
+	
 	exec_timer.it_value.tv_sec = 0;
 	exec_timer.it_value.tv_usec = 25000;
 	exec_timer.it_interval.tv_sec = 0;
 	exec_timer.it_interval.tv_usec = 0;
 	setitimer(ITIMER_REAL, &exec_timer, NULL);
 	double start = get_time();
-
+	
 	int x = 0;
 	while(x < 10){
 		printf("Doing stuff\n");
@@ -41,8 +41,8 @@ int main(int argc, char* argv[]){
 	}
 	
 	double end = get_time();
-
+	
 	printf("Took %lf microseconds for the stuff to do\n", end - start);
-
+	
 	return 0;
 }
