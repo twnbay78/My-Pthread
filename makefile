@@ -1,5 +1,5 @@
 C	=       gcc
-FLAGS   =       -Wall -g -Werror -fsanitize=address
+FLAGS   =       -Wall -g -Werror 
 COMPILE =       $(CC) $(FLAGS)
 
 all     :	my_pthread 
