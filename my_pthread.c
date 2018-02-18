@@ -2,7 +2,7 @@
 
 unsigned int tid = 5;
 MTH* Master;
-ucontext_t* ctx_main;
+ucontext_t ctx_main;
 
 typedef struct _JUNK {
 	int x;
@@ -27,6 +27,7 @@ int main(int argc, char* argv[]){
 
 	printf("test threads and structs initialized\n");
 	my_pthread_t tid;
+	my_pthread_create(&tid, NULL, (void*)t1, NULL);
 	my_pthread_create(&tid, NULL, (void*)t1, NULL);
 
 
