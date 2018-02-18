@@ -14,7 +14,7 @@
 #include <math.h>
 
 // preprocessor 
-#define hanbdle_error(msg) \
+#define hanbdle_error(msg)
 	do { fprintf(stderr, "There was an error. Error message: %s\n", strerror(msg); exit(EXIT_FAILURE); } while(0)
 #define TESTING
 #define HIGH_EXEC_TIMEOUT 25000
@@ -60,7 +60,12 @@ typedef enum Queue_Type {
 
 typedef struct _mutex {
   
-}my_pthread_mutex_t;
+  int flag;				//flag as tid identifier
+  int guard;			//lock/unlock
+
+  my_pthread_t* thread;	//linked thread of this mutex
+
+} my_pthread_mutex_t;
 
 /*  Thread Control Block - holds metadata on structs 
  *
@@ -112,7 +117,7 @@ typedef struct _MTH{
    my_pthread_t* Low;
    my_pthread_t* Wait;
    my_pthread_t* Cleaner;
-   my_pthread_t* Mutex;
+   my_pthread_mutex_t* Mutex;		//single wait list for mutexes
    unsigned int high_size;
    unsigned int medium_size;
    unsigned int low_size;
@@ -151,7 +156,7 @@ void initializeMTH(MTH* main)
 	my_pthread_t* L3 = (my_pthread_t*)malloc(sizeof(my_pthread_t));
 	my_pthread_t* WaitT = (my_pthread_t*)malloc(sizeof(my_pthread_t));
 	my_pthread_t* CleanerT = (my_pthread_t*)malloc(sizeof(my_pthread_t));
-	my_pthread_t* MutexT = (my_pthread_t*)malloc(sizeof(my_pthread_t));
+	my_pthread_mutex_t* MutexT = (my_pthread_mutex_t*)malloc(sizeof(my_pthread_mutex_t));
 
 	main->high_size++;
 	main->medium_size++;
@@ -598,22 +603,86 @@ int my_pthread_join(my_pthread_t thread, void** value_ptr){
 
 // initializes a my_pthread_mutex_t created by the calling thread
 // attributes are ignored
+/*  
+ * Return value for mutex: returns 0 if init is successful. If not, returns error int
+ * pthread.h: EINVAL = value specified if mutex is invalid
+ * 			  EBUSY = value returned if the mutex
+*/
 int my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* mutexattr){
 
-  return -1;
+	//Return error code if cannot init mutex
+	if (mutex == NULL) {
+		return EINVAL;
+	}
+
+	//Enqueue this mutex into the MTH list
+	my_pthread_mutex_t* ptr = Master->mutex;
+	while(ptr->next != NULL) {	//find the end of the list
+		ptr = Master->mutex->next;
+	}
+
+	ptr->next = mutex;	//store mutex at the end of MTH mutex list
+	
+	//Initialize mutex
+	mutex->thread = NULL;
+	mutex->flag = 0;
+	mutex->guard = 0;
+
+	return 0;		// return if successful
 }
 
-// Loccks a given mutex
+
+// Locks a given mutex
 // Other threads attempting to access this mutex will not run until it is unlocked
 int my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
 
-  return -1;
+	if (mutex == NULL) return EINVAL;
+
+	//TODO: Compare atomic jump NEEDS TO BE IMPLEMENTED
+	//Check if mutex isn't locked, we can bind to a thread
+	if (mutex->guard == 0) {
+		mutex->guard = 1;				//guard status: locked
+		mutex->flag = Master->current->tid;	//tid bind
+	}
+
+	else {
+		yieldD(Master->current);
+	}
+  
+  return 0;		//return 0 if mutex can be locked
+}
+
+void yieldD (my_pthread_t* thread) {
+
+	//Check what queue the thread is currently in
+	if (thread->queue == level1) {
+		move2Q(level2, level1, thread);
+		my_pthread_yield();
+	}
+
+	else if (thread->queue == level2) {
+		move2Q(level3, level2, thread);
+		my_pthread_yield();
+	}
+
+	else {		//if already in level 3
+		my_pthread_yield();
+	}
 }
 
 // Unlocks a given mutex
 int my_pthread_mutex_unlock(my_pthread_mutex_t* mutex){
 
-  return -1;
+	//TODO: TEST AND SET FOR CHECK (NEED TO BE DONE)
+	if (mutex->flag == Master->current->tid) {
+		mutex->guard = 0;
+	}
+
+	else {
+		exit(1);
+	}
+	
+  return 0;
 }
 
 // Destroys a given mutex
