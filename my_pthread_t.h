@@ -19,6 +19,7 @@
 #define TESTING
 #define HIGH_EXEC_TIMEOUT 25000
 #define MEDIUM_EXEC_TIMEOUT 37000
+#define LOW_EXEC_TIMEOUT 50000
 #define T_STACK_SIZE 1048576
 #define MAINTENANCE_THRESHOLD 2000000
 
@@ -44,7 +45,7 @@ typedef enum t_state{
   BLOCKED,
   TERMINATED,
 }t_state;
-
+sigset_t sigProcMask;
 // Enum to represent queue types
 typedef enum Queue_Type {
   MasterThreadHandler = 0, 
@@ -90,6 +91,7 @@ typedef struct _tcb {
   ucontext_t t_context;
   t_state state;
   queue_type queue;
+  int joinid;
   long int start_init;
   long int start_exec;
   long int start_ready;
@@ -127,7 +129,7 @@ typedef struct _MTH{
 extern unsigned int tid;
 extern MTH* Master;
 extern ucontext_t ctx_main;
-
+extern ucontext_t ctx_handler;
 // - - - - - - - QUEUE FUNCTIONS - - - - - - - //
 
 /* initializes a queue level 
@@ -335,7 +337,6 @@ void move2Q(my_pthread_t* moveTo, my_pthread_t* moveFrom,my_pthread_t* thread)
  dequeueSpecific(moveFrom,thread);
 }
    enqueue(moveTo,thread);
-    
 }
 
 /* Frees all elements in the queue and returns an empty queue
@@ -363,13 +364,25 @@ my_pthread_t* emptyQueue(my_pthread_t* head){
  *
  */
 my_pthread_t* dispatcher(MTH* master){
+ printf("\n\ncalling dispatcher\n");
   my_pthread_t* tmp;
   // if there is a thread in the high priority queue, run the next one in line
+  printf("size of high priority: %d\n", Master->high_size);
   if(Master->high_size > 1){
-    tmp = peak(Master->High);
-  }else{
+    return peak(Master->High);
+  }
+  else if(Master->medium_size > 1){
+    return peak(Master->Medium);
+  }
+  else if(Master->low_size > 1){
+    return peak(Master->Low);
+  }
+  else{
+    printf("dispatcher returning NULL\n\n");
+    printMTH(Master);
     return NULL;
   }
+  printf("dispatcher returning thread\n\n");
   return tmp;
 }
 
@@ -385,91 +398,89 @@ my_pthread_t* dispatcher(MTH* master){
  */
 void mt_handler (int signum){
 
-  if(getcontext(&ctx_main) == -1){
+  printf("\n\nsig handler starting\n");
+
+  if(getcontext(&ctx_handler) == -1){
     fprintf(stderr, "Could not get main context in scheudler context to scheduled thread. Error msg: %s\n", strerror(errno));
     exit(EXIT_FAILURE);
   }
+  ctx_handler.uc_stack.ss_sp = (void*)malloc(T_STACK_SIZE);
+  if(!ctx_handler.uc_stack.ss_sp){
+    printf("Malloc didn't work :(\n");
+    exit(EXIT_FAILURE);
+  }
+  ctx_handler.uc_stack.ss_size = T_STACK_SIZE; 
+  ctx_handler.uc_link = &ctx_main;
+
+  // Prioritize here
+ if(getcontext(&ctx_handler) == -1){
+   fprintf(stderr, "Could not get main context in scheudler context to scheduled thread. Error msg: %s\n", strerror(errno));
+   exit(EXIT_FAILURE);
+ }
+ ctx_handler.uc_stack.ss_sp = (void*)malloc(T_STACK_SIZE);
+ if(!ctx_handler.uc_stack.ss_sp){
+   printf("Malloc didn't work :(\n");
+   exit(EXIT_FAILURE);
+ }
+ ctx_handler.uc_stack.ss_size = T_STACK_SIZE; 
+ ctx_handler.uc_link = &ctx_main;
 
   if(signum == SIGALRM){
     printf("timer went off!\n");
+    // NEED TO DEMOTE
   }
 
-  // Prioritize here
-  //
-  //
-  
-
   // schedule threads here
-  
+
   // if there is a thread in the ready queue, HANDLE IT
   if(Master->current != NULL){
+    printf("currnent thread set\n");
     // Put thread in cleaner queue
     if(Master->current->state == TERMINATED){
+      printf("current thread terminated\n");
       move2Q(Master->Cleaner, Master->High, peak(Master->High));    
       Master->current = NULL;
     }
     else if(Master->current->state == YIELDED){
-       move2Q(Master->current,Master->current,peak(Master->High));
-       Master->current = NULL;
+      move2Q(Master->current,Master->current,peak(Master->High));
+      Master->current = NULL;
     }
     else if (Master->current->state == READY){
-      if(swapcontext(&ctx_main, &Master->current->t_context) == -1){
-        fprintf(stderr, "Could not swap context to scheduled thread. Error msg: %s\n", strerror(errno));
-        exit(EXIT_FAILURE);
-      }
-    } 
-  }
-  
-  // thread needs to be scheduled
-  else if(Master->current == NULL){
-    my_pthread_t* next = dispatcher(Master);
-    if(next == NULL){
-      printf("No more threads to be executed\n");
-      if(swapcontext(&ctx_main, &Master->current->t_context) == -1){
+      if(swapcontext(&ctx_handler, &Master->current->t_context) == -1){
         fprintf(stderr, "Could not swap context to scheduled thread. Error msg: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
       }
     }
-    
-  }
-}
-
-/* Schedule handler to assign different priority levels to threads
- *
- */
-void rePrioritize(my_pthread_t* head){
-
-  my_pthread_t* start;
-  my_pthread_t*finalSwapPos;
-  my_pthread_t* maxPosPrev;
-  my_pthread_t* maxPos;
-  if(head->next!=NULL)
-  {
-  start = head;
-  maxPosPrev = head;
-  maxPos = head->next;
-  finalSwapPos = head->next;
-  }
-  //Find max
-  while (head->next != NULL) {
-    if((head->next)->t_priority > maxPos->t_priority)
+      else if(Master->current->total_exec>=HIGH_EXEC_TIMEOUT)
       {
-        maxPos = head->next;
-        maxPosPrev = head; 
-      }
-    head = head->next;
+        move2Q(Master->High,Master->current->parent,Master->current);
+        Master->current->total_exec = 0; 
+        Master->medium_size++;
+        Master->high_size--;
+      } 
+    else if(Master->current->total_exec>=MEDIUM_EXEC_TIMEOUT)
+    {
+       move2Q(Master->Low,Master->current->parent,Master->current);
+      Master->current->total_exec = 0; 
+      Master->medium_size--;
+        Master->low_size++;
+    }
   }
-  //swap
-  my_pthread_t* temp;
 
-  temp = maxPos->next;
-  maxPos->next = finalSwapPos->next;
-  finalSwapPos->next = temp;
-
-  start->next = maxPos;
-  maxPosPrev->next = finalSwapPos;
-
-
+  // thread needs to be scheduled
+  if(Master->current == NULL){
+    printf("no current thread set, setting current thread\n");
+    Master->current = dispatcher(Master);
+    if(Master->current == NULL){
+      printf("No more threads to be executed\n");
+    }
+    else if(swapcontext(&ctx_handler, &Master->current->t_context) == -1){
+      fprintf(stderr, "Could not swap context to scheduled thread. Error msg: %s\n", strerror(errno));
+      exit(EXIT_FAILURE);
+    }
+  }
+  printf("sig handler returning\n");
+  setcontext(&ctx_main);
 }
 
 
@@ -489,12 +500,25 @@ void exec_thread(my_pthread_t* thread, void *(*function)(void*), void* arg){
     fprintf(stderr, "Could not catch signal. Error message: %s\n", strerror(errno));
     exit(EXIT_FAILURE);
   }
-  if(thread->queue == level1){
+  if(thread->queue == level3){
     exec_timer.it_value.tv_sec = 0;
     exec_timer.it_value.tv_usec = HIGH_EXEC_TIMEOUT;
     exec_timer.it_interval.tv_sec = 0;
     exec_timer.it_interval.tv_usec = 0;
-  }
+   }
+  else if(thread->queue == level2){
+    exec_timer.it_value.tv_sec = 0;
+    exec_timer.it_value.tv_usec = MEDIUM_EXEC_TIMEOUT;
+    exec_timer.it_interval.tv_sec = 0;
+    exec_timer.it_interval.tv_usec = 0;
+    }
+  else
+    {
+    exec_timer.it_value.tv_sec = 0;
+    exec_timer.it_value.tv_usec = LOW_EXEC_TIMEOUT;
+    exec_timer.it_interval.tv_sec = 0;
+    exec_timer.it_interval.tv_usec = 0;
+    }
 
   if(setitimer(ITIMER_REAL, &exec_timer, NULL) == -1){
     fprintf(stderr, "Could not set timer. Error message: %s\n", strerror(errno));
@@ -511,6 +535,7 @@ void exec_thread(my_pthread_t* thread, void *(*function)(void*), void* arg){
   thread->state = TERMINATED; 
   
   // RUN SCHEDULE HANDLER HERE
+  printf("entering handler\n");
   mt_handler(0);
   
 }
@@ -570,7 +595,8 @@ int my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr, void *(*functi
 
   // setting my_pthread_t elements
   thread->tid = ++tid;
-  thread->t_priority = INT_MAX;
+  thread->t_priority = 7;
+  thread->joinid = -1;
   thread->name = (char*)malloc(sizeof("mth_high"));
   thread->name = "mth_high";
   printf("Thread initialized\n");
@@ -605,7 +631,22 @@ void my_pthread_yield(){
 void my_pthread_exit(void* value_ptr){
   // Set state of running thread to YIELD and have a signal handler run
   // thread.state = EXITED
+  sigprocmask(SIG_BLOCK, &sigProcMask, NULL);
+  printf("Thread Exited\n");
+
+   if(Master->current->joinid != -1){
+    enqueue(Master->Wait,Master->current);
+  }
+
+  Master->current->state = TERMINATED;
+  
+  free(Master->current->t_context.uc_stack.ss_sp);//clears stack in thread's context
+  dequeueSpecific(Master->current->parent,Master->current);
+  sigprocmask(SIG_BLOCK, &sigProcMask, NULL);
+  
+  mt_handler(0);
 }
+
 int my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* mutexattr){
 
   //Return error code if cannot init mutex
@@ -616,13 +657,16 @@ int my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* 
   //Enqueue this mutex into the MTH list
   my_pthread_mutex_t* ptr = Master->Mutex;
   while(ptr->next != NULL) {  //find the end of the list
+    if(ptr == mutex)
+    {
+      perror("EINVAL"); 
+      return EINVAL;
+    }
     ptr = Master->Mutex->next;
   }
 
   ptr->next = mutex;  //store mutex at the end of MTH mutex list
   
-  //Initialize mutex
-  //Mutex->thread = NULL;
   mutex->flag = 0;
   mutex->guard = 0;
 
@@ -631,7 +675,18 @@ int my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* 
 // Call to the my_pthread_t library ensuring that the calling thread will not continue execution until the one references exits
 // If value_ptr is not null, the return value of the exiting thread will be passed back
 int my_pthread_join(my_pthread_t thread, void** value_ptr){
-  return -1;
+  if(thread.joinid != -1){
+    perror("EINVAL"); return EINVAL;}
+  if(thread.tid == Master->current->joinid && Master->current->joinid != -1){
+    perror("EDEADLK"); return EDEADLK;}
+  if(thread.state == TERMINATED){
+    return 1;
+  }
+  thread.joinid = Master->current->tid;
+  my_pthread_yield();
+  printf("Joined\n");
+
+  return 1;
 }
 void yieldD (my_pthread_t* thread) {
 
@@ -659,19 +714,21 @@ int my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
 
   //TODO: Compare atomic jump NEEDS TO BE IMPLEMENTED
   //Check if mutex isn't locked, we can bind to a thread
-  if (mutex->flag == 0) {
-    int tmp = Master->current->tid;
-    __asm__(
-          "xchgl %0, %1;\n"
-          : "=r"(mutex->flag), "+m"(tmp)
-          : "0"(mutex->flag)
-          :"memory");
+  if(mutex->guard==0)
+  {
+  int tide = Master->current->tid;
+  int tmp = 1;
+  __asm__(
+        "xchgl %0, %1;\n"
+        : "=r"(mutex->guard), "+m"(tmp)
+        : "0"(mutex->guard)
+        :"memory");
+  mutex->flag = tide;
   }
-
-  else {
-      yieldD(Master->current);  
+  else
+  {
+    yieldD(Master->current);
   }
-  
   
   return 0;   //return 0 if mutex can be locked
 }
@@ -684,17 +741,25 @@ int my_pthread_mutex_lock(my_pthread_mutex_t* mutex){
 int my_pthread_mutex_unlock(my_pthread_mutex_t* mutex){
 
   //TODO: TEST AND SET FOR CHECK (NEED TO BE DONE)
-  if(mutex->flag == Master->current->tid)
+  if(mutex->guard==1)
   {
-    int a = 0;
-    __asm__(
-        "xchgl %0, %1;\n"
-        : "=r"(mutex->flag), "+m"(a)
-        : "0"(mutex->flag)
-        :"memory");
-  }
+    if(mutex->flag == Master->current->tid)
+    {
+      int a = 0;
+      __asm__(
+          "xchgl %0, %1;\n"
+          : "=r"(mutex->flag), "+m"(a)
+          : "0"(mutex->flag)
+          :"memory");
+    }
 
-  else {
+    else {
+      exit(1);
+    }
+  }
+  
+  else
+  {
     exit(1);
   }
   
@@ -705,6 +770,10 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t* mutex){
 // Mutex should be unlocked before doing so (or deadlock)
 int my_pthread_mutex_destroy(my_pthread_mutex_t* mutex){
 
-  return -1;
+  printf("Mutex Destroyed\n");
+   if(!mutex)return EINVAL;
+    mutex->guard = 0;
+    mutex->flag = 0;
+  return 0;
 }
 #endif
