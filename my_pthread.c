@@ -2,6 +2,7 @@
 
 unsigned int tid = 5;
 MTH* Master;
+ucontext_t ctx_handler;
 ucontext_t ctx_main;
 
 typedef struct _JUNK {
@@ -16,8 +17,13 @@ void* t1(void* arg){
 	return NULL;
 }
 
-int main(int argc, char* argv[]){
+void main_test(){
 	
+	if(getcontext(&ctx_main) == -1){
+		fprintf(stderr, "Could not get main context in scheudler context to scheduled thread. Error msg: %s\n", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
  	Master = (MTH*)malloc(sizeof(MTH));
  	initializeMTH(Master);
 	printf("init'd mth\n");
@@ -26,10 +32,13 @@ int main(int argc, char* argv[]){
  	//my_pthread_t* test3 = (my_pthread_t*)malloc(sizeof(my_pthread_t));
 
 	printf("test threads and structs initialized\n");
-	my_pthread_t tid;
-	my_pthread_create(&tid, NULL, (void*)t1, NULL);
-	my_pthread_create(&tid, NULL, (void*)t1, NULL);
-
+	my_pthread_t test1;
+	my_pthread_t test2;
+ 	printMTH(Master);
+	printf("\n\nCreating thread 1\n\n");
+	my_pthread_create(&test1, NULL, (void*)t1, NULL);
+	printf("\n\nCreating thread 2\n\n");
+	my_pthread_create(&test2, NULL, (void*)t1, NULL);
 
  	//enqueue(Master->Medium, &tid);
 	/*
@@ -45,6 +54,12 @@ int main(int argc, char* argv[]){
 
 	// free
 	free(Master);
+}
+
+int main(int argc, char* argv[]){
+	
+	main_test();
+	printf("\nmain here, returning\n");
 	return 0;
 }
 

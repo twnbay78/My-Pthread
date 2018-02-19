@@ -125,6 +125,7 @@ typedef struct _MTH{
 extern unsigned int tid;
 extern MTH* Master;
 extern ucontext_t ctx_main;
+extern ucontext_t ctx_handler;
 
 // - - - - - - - QUEUE FUNCTIONS - - - - - - - //
 
@@ -366,13 +367,24 @@ my_pthread_t* emptyQueue(my_pthread_t* head){
  *
  */
 my_pthread_t* dispatcher(MTH* master){
+	printf("\n\ncalling dispatcher\n");
 	my_pthread_t* tmp;
 	// if there is a thread in the high priority queue, run the next one in line
+	printf("size of high priority: %d\n", Master->high_size);
 	if(Master->high_size > 1){
 		tmp = peak(Master->High);
-	}else{
+	}
+	else if(Master->medium_size > 1){
+		tmp = peak(Master->Medium);
+	}
+	else if(Master->low_size > 1){
+		tmp = peak(Master->Low);
+	}
+	else{
+		printf("dispatcher returning NULL\n\n");
 		return NULL;
 	}
+	printf("dispatcher returning thread\n\n");
 	return tmp;
 }
 
@@ -388,53 +400,67 @@ my_pthread_t* dispatcher(MTH* master){
  */
 void mt_handler (int signum){
 
-  if(getcontext(&ctx_main) == -1){
-    fprintf(stderr, "Could not get main context in scheudler context to scheduled thread. Error msg: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
-  }
+	printf("\n\nsig handler starting\n");
 
-  if(signum == SIGALRM){
-    printf("timer went off!\n");
-  }
+	if(getcontext(&ctx_handler) == -1){
+		fprintf(stderr, "Could not get main context in scheudler context to scheduled thread. Error msg: %s\n", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+	ctx_handler.uc_stack.ss_sp = (void*)malloc(T_STACK_SIZE);
+	if(!ctx_handler.uc_stack.ss_sp){
+		printf("Malloc didn't work :(\n");
+		exit(EXIT_FAILURE);
+	}
+	ctx_handler.uc_stack.ss_size = T_STACK_SIZE; 
+	ctx_handler.uc_link = &ctx_main;
 
-  // Prioritize here
-  //
-  //
-  
+	if(signum == SIGALRM){
+		printf("timer went off!\n");
+		// NEED TO DEMOTE
+	}
 
-  // schedule threads here
-  
-  // if there is a thread in the ready queue, HANDLE IT
-  if(Master->current != NULL){
-    // Put thread in cleaner queue
-    if(Master->current->state == TERMINATED){
-      move2Q(Master->Cleaner, Master->High, peak(Master->High));    
-      Master->current = NULL;
-    }
-    else if(Master->current->state == YIELDED){
-       move2Q(Master->current,Master->current,peak(Master->High));
-       Master->current = NULL;
-    }
-    else if (Master->current->state == READY){
-      if(swapcontext(&ctx_main, &Master->current->t_context) == -1){
-        fprintf(stderr, "Could not swap context to scheduled thread. Error msg: %s\n", strerror(errno));
-        exit(EXIT_FAILURE);
-      }
-    }	
-  }
-  
-  // thread needs to be scheduled
-  else if(Master->current == NULL){
-    my_pthread_t* next = dispatcher(Master);
-    if(next == NULL){
-      printf("No more threads to be executed\n");
-      if(swapcontext(&ctx_main, &Master->current->t_context) == -1){
-        fprintf(stderr, "Could not swap context to scheduled thread. Error msg: %s\n", strerror(errno));
-        exit(EXIT_FAILURE);
-      }
-    }
-    
-  }
+	// Prioritize here
+	//
+	//
+
+
+	// schedule threads here
+
+	// if there is a thread in the ready queue, HANDLE IT
+	if(Master->current != NULL){
+		printf("currnent thread set\n");
+		// Put thread in cleaner queue
+		if(Master->current->state == TERMINATED){
+			printf("current thread terminated\n");
+			move2Q(Master->Cleaner, Master->High, peak(Master->High));    
+			Master->current = NULL;
+		}
+		else if(Master->current->state == YIELDED){
+			move2Q(Master->current,Master->current,peak(Master->High));
+			Master->current = NULL;
+		}
+		else if (Master->current->state == READY){
+			if(swapcontext(&ctx_handler, &Master->current->t_context) == -1){
+				fprintf(stderr, "Could not swap context to scheduled thread. Error msg: %s\n", strerror(errno));
+				exit(EXIT_FAILURE);
+			}
+		}	
+	}
+
+	// thread needs to be scheduled
+	if(Master->current == NULL){
+		printf("no current thread set, setting current thread\n");
+		Master->current = dispatcher(Master);
+		if(Master->current == NULL){
+			printf("No more threads to be executed\n");
+		}
+		else if(swapcontext(&ctx_handler, &Master->current->t_context) == -1){
+			fprintf(stderr, "Could not swap context to scheduled thread. Error msg: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+	}
+	printf("sig handler returning\n");
+	setcontext(&ctx_main);
 }
 
 /* Schedule handler to assign different priority levels to threads
@@ -483,6 +509,7 @@ void rePrioritize(my_pthread_t* head){
 void exec_thread(my_pthread_t* thread, void *(*function)(void*), void* arg){
 
   thread->state = READY;
+  Master->current = thread;
 
   printf("\n\nexec function starting\n");
 
@@ -506,14 +533,15 @@ void exec_thread(my_pthread_t* thread, void *(*function)(void*), void* arg){
 
   // execute thread function until termination
   printf("setup timer + signal\n");
-  thread->state = RUNNING;
-  thread-> t_retval = function(arg);
+  Master->current->state = RUNNING;
+  Master->current->t_retval = function(arg);
   printf("function executed\n");
 
   // thread terminates
-  thread->state = TERMINATED; 
+  Master->current->state = TERMINATED; 
   
   // RUN SCHEDULE HANDLER HERE
+  printf("caling sig handler\n");
   mt_handler(0);
   
 }
