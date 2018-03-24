@@ -1,7 +1,7 @@
 #include "my_pthread_t.h"
-my_pthread_t* Master;
+static my_pthread_t* Master;
 unsigned int tid = 0;
-ucontext_t ctx_main, ctx_handler, ctx_thread_create;
+static ucontext_t ctx_main;
 
 typedef struct _JUNK {
 	int x;
@@ -268,15 +268,15 @@ my_pthread_t* dispatcher(my_pthread_t* master){
 	printf("\n\ncalling dispatcher\n");
 	my_pthread_t* tmp;
 	// if there is a thread in the high priority queue, run the next one in line
-	if(Master->high_size >= 0){
+	if(Master->high_size > 0){
 		printf("size of high priority: %d\n", Master->high_size);
 		return peak(Master->High);
 	}
-	else if(Master->medium_size >=0){
+	else if(Master->medium_size > 0){
 		printf("size of medium priority: %d\n", Master->medium_size);
 		return peak(Master->Medium);
 	}
-	else if(Master->low_size >=0 ){
+	else if(Master->low_size > 0 ){
 		printf("size of medium priority: %d\n", Master->low_size);
 		return peak(Master->Low);
 	}
@@ -339,8 +339,9 @@ void mt_handler (){
 			Master->current = NULL;
 		}
 		else if (Master->current->state == READY){
-			printf("Thread attempting to execute");
-			if(swapcontext(&ctx_handler, &Master->current->t_context) == -1){
+			printf("Thread attempting to execute\n");
+			printf("tid of next thread: %d\n", Master->current->tid);
+			if(swapcontext(&Master->t_context, &Master->current->t_context) == -1){
 				fprintf(stderr, "Could not swap context to scheduled thread. Error msg: %s\n", strerror(errno));
 				exit(EXIT_FAILURE);
 			}
@@ -366,6 +367,7 @@ void mt_handler (){
 
 	}
 
+	printf("why is this happening\n");
 	// thread needs to be scheduled
 	if(Master->current == NULL){
 		printf("no current thread set, setting current thread\n");
@@ -377,14 +379,19 @@ void mt_handler (){
 			printf("No more threads to be executed\n");
 			return;
 		}
-		else if(swapcontext(&ctx_handler, &Master->current->t_context) == -1){
+		else if(swapcontext(&Master->t_context, &Master->current->t_context) == -1){
 			fprintf(stderr, "Could not swap context to scheduled thread. Error msg: %s\n", strerror(errno));
 			exit(EXIT_FAILURE);
 		}
 	}
+	printf("idk\n");
 	printf("sig handler returning\n");
 	printMTH(Master);
-	setcontext(&ctx_main);
+	/*
+	if(swapcontext(&Master->t_context, &ctx_main) == -1){
+		fprintf(stderr, "Could not swap context to scheduled thread. Error msg: %s\n", strerror(errno));
+		exit(EXIT_FAILURE);
+	}*/
 }
 
 
@@ -440,7 +447,8 @@ void exec_thread(my_pthread_t* thread, void *(*function)(void*), void* arg){
 
 	// RUN SCHEDULE HANDLER HERE
 	printf("entering handler\n");
-	mt_handler(0);
+
+	//mt_handler(0);
 
 }
 
@@ -473,6 +481,53 @@ my_pthread_t* createThread(my_pthread_t* Thread,ucontext_t* Context)
 // attr is ignored
 // A my_pthread is passed into the function, the function then 
 int my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr, void *(*function)(void*), void* arg){
+
+	
+
+	// enqueue process in MLPQ with highest priority
+	if(start == 0)
+	{
+		printf("main thread ready\n\n");
+		start = 1;
+		Master = (my_pthread_t*)malloc(sizeof(my_pthread_t));
+		initializeMTH(Master);
+		
+		
+		if(getcontext(&Master->t_context) == -1){
+			fprintf(stderr, "Could not get context. Error message: %s\n", strerror(errno));
+			return -1;
+		}
+		Master->t_context.uc_stack.ss_sp = (void*)malloc(T_STACK_SIZE);
+		if(!Master->t_context.uc_stack.ss_sp){
+			printf("Malloc didn't work :(\n");
+			exit(EXIT_FAILURE);
+		}
+		Master->t_context.uc_stack.ss_size = T_STACK_SIZE; 
+		Master->t_context.uc_link = &ctx_main;
+		makecontext(&Master->t_context, (void(*))mt_handler, 0);
+		Master->state = READY;
+		Master->queue = 3;
+		enqueue(Master->High,Master);
+
+
+		/*
+		ctx_handler.uc_stack.ss_sp = (void*)malloc(T_STACK_SIZE);
+		if(!ctx_handler.uc_stack.ss_sp){
+			printf("Malloc didn't work :(\n");
+			free(thread);
+			return -1;
+		}
+		ctx_handler.uc_stack.ss_size = T_STACK_SIZE; 
+		ctx_handler.uc_link = &ctx_main;
+		makecontext(&ctx_handler, (void(*))mt_handler, 0);
+
+		printf("mt_handler and mt_handler context made\n");
+
+		//Master->tid= 0;
+		//Master->t_priority = INT_MAX;
+		//Master->t_context = ctx_main;
+		*/
+	}
 
 	thread = (my_pthread_t*)malloc(sizeof(my_pthread_t));
 	printf("\n\nallocated space for thread\n");
@@ -513,35 +568,18 @@ int my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr, void *(*functi
 	printf("context made\n");
 
 
-	// enqueue process in MLPQ with highest priority
-	if(start == 0)
-	{
-		start = 1;
-		Master = (my_pthread_t*)malloc(sizeof(my_pthread_t));
-		//printf("hello");
-		initializeMTH(Master);
-		//Master->tid= 0;
-		//Master->t_priority = INT_MAX;
-		//Master->t_context = ctx_main;
-		/*
-		   Master->t_context.uc_stack.ss_sp = (void*)malloc(T_STACK_SIZE);
-		   if(!Master->t_context.uc_stack.ss_sp){
-		   printf("Malloc didn't work :(\n");
-		   exit(EXIT_FAILURE);
-		   }
-		   Master->t_context.uc_stack.ss_size = T_STACK_SIZE; 
-		   */
-		//  makecontext(&Master->t_context, (void(*))mt_handler, 0);
-		//Master->state = READY;
-		//enqueue(Master->Low,Master);
-	}
 
 	enqueue(Master->High, thread);
-	Master->current = peak(Master->High);
 	printf("thread enqueued\n");
 	thread->state = READY;
 	printf("thread state now READY\n\n");
-	mt_handler(0);
+	ctx_main.uc_link = &Master->t_context;
+	if(swapcontext(&ctx_main, &(Master->t_context)) == -1){
+		fprintf(stderr, "Could not swap context to scheduled thread. Error msg: %s\n", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+	printf("returning\n");
+	//mt_handler(0);
 
 	return 0;
 }
@@ -716,23 +754,6 @@ void* t1(void* arg){
 	return NULL;
 }
 void main_test(){
-
-	// making sig handler execution context
-	char func_stack[1048576];
-	if(getcontext(&ctx_handler) == -1){
-		fprintf(stderr, "Could not get main context in scheudler context to scheduled thread. Error msg: %s\n", strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-	ctx_handler.uc_stack.ss_sp = func_stack;
-	if(!ctx_handler.uc_stack.ss_sp){
-		printf("Malloc didn't work :(\n");
-		exit(EXIT_FAILURE);
-	}
-	ctx_handler.uc_stack.ss_size = sizeof(func_stack); 
-	ctx_handler.uc_link = &ctx_main;
-	makecontext(&ctx_handler, mt_handler, 0);
-
-	// making thread creator execution context
 
 
 	// allocating stack for thread

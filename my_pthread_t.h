@@ -129,8 +129,8 @@ typedef struct _MTH{
 // - - - - - - - GLOBAL VARIABLES - - - - - - - - // 
 extern unsigned int tid;
 
-extern my_pthread_t* Master;
-extern ucontext_t ctx_main;
-extern ucontext_t ctx_handler;
+//extern my_pthread_t* Master;
+//extern ucontext_t ctx_main;
+//extern ucontext_t ctx_handler;
 
 #endif

@@ -16,7 +16,9 @@ test5	:	Test/test5.c
 my_pthread:	my_pthread.c
 		$(COMPILE) -o my_pthread my_pthread.c my_pthread_t.h 
 
+malloc	:	malloc.c
+		$(COMPILE) -o malloc malloc.c
 
 
 clean   :
-		rm -rf *.o my_pthread
+		rm -rf *.o my_pthread malloc
