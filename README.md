@@ -22,7 +22,7 @@ terminal:
 Running the project is accomplished by outputting the data into standard input:
 <br>
 <br>
-<pre>$cat <em>file.csv</em> | ./sorter -c <em>col_to_sort</em></pre>
+<pre>./some_executable</em></pre>
 <br>
 
 <h3>Phases</h3>
