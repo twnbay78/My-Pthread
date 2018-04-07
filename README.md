@@ -5,8 +5,8 @@ Segmented Paging FTW!
 by Leo Scarano, Hanson Tran and Vincent Taylor
 
 
-Phases
-The following implementation has been created in 4 phases:
+Phases<br>
+The following implementation has been created in 4 phases:<br>
 •	Phase A: Direct-Mapped Memory
 o	This part of the project deals with mapping memory request using malloc to a global char array of 8Mb. This effectively acts as our own memory, so we first must align the memory and decide how we are going to store the metadata and handle multiple concurrent request. 
 •	Phase B: Virtual Memory
