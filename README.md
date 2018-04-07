@@ -1,21 +1,45 @@
-# OS-Land-Raider
-Using the Linux pthread library to create a USR thread implementation 
+<h1>OS Land Raider </h1>
+by Leo Scarano and Vincent Taylor
 
-Segmented Paging FTW!
-by Leo Scarano, Hanson Tran and Vincent Taylor
+<h3>Segmented Paging FTW!</h3>
 
+It is very useful in many cases to sort large sets of data. One good example of 
+this is sorting a large set of movie data. Movies have several attributes involved, 
+allowing for lots of data be analyzed, mined, sorted and distributed throughout wide 
+arrays of applications.  This program, in short, will take in movie data from a .csv
+file (most typically associated with Microsoft Office Excel) and sort the file based 
+on a certain type of data.
 
-<h1>Phases<h1></br>
-The following implementation has been created in 4 phases:</br>
-•	Phase A: Direct-Mapped Memory
-o	This part of the project deals with mapping memory request using malloc to a global char array of 8Mb. This effectively acts as our own memory, so we first must align the memory and decide how we are going to store the metadata and handle multiple concurrent request. 
-•	Phase B: Virtual Memory
-o	In this stage we must split up the data into pages this way we can mprotect the data. We must decide on a page layout for our memory and how we are going to organize what thread owns what page. Afterwards, we use the malloc in part one to allocate within each page. Additionally, after protecting our memory we must create a signal handler that allows us to load the current thread’s pages in when there is a call to its memory i.e. a Page fault. 
-•	Phase C: Swap File
-o	This stage requires us to introduce a swap file of 16mb which we can use as secondary storage to store more pages. This requires us to create a file and have an eviction policy. Furthermore, we must include a way to read, and write to the swap file. After all of this we must be able to find free pages in the swap file and move them into memory giving threads more memory if needed.
-•	Phase D: Shared Region
-o	Finally, this part of the projects tasks us with creating a shared region of memory for all the threads used by the shalloc command. This region acts the same as all the other memory only it is not protected or owned by a single thread.
-Structure
+<h3>Usage</h3>
+
+Compiling and linking necessary files is made simple using the "make" command in 
+terminal:
+<br>
+<br>
+<pre>$make</pre>
+<br>
+
+Running the project is accomplished by outputting the data into standard input:
+<br>
+<br>
+<pre>$cat <em>file.csv</em> | ./sorter -c <em>col_to_sort</em></pre>
+<br>
+
+<h3>Phases</h3>
+
+The following implementation has been created in 4 phases:
+
+<ul>
+	<li>Phase A: Direct-Mapped Memory</li> 
+		o This part of the project deals with mapping memory request using malloc to a global char array of 8Mb. This effectively acts as our own memory, so we first must align the memory and decide how we are going to store the metadata and handle multiple concurrent request. 
+	<li>Phase B: Virtual Memory</li>
+		o In this stage we must split up the data into pages this way we can mprotect the data. We must decide on a page layout for our memory and how we are going to organize what thread owns what page. Afterwards, we use the malloc in part one to allocate within each page. Additionally, after protecting our memory we must create a signal handler that allows us to load the current thread’s pages in when there is a call to its memory i.e. a Page fault. 
+	<li>Phase C: Swap File</li>
+		o This stage requires us to introduce a swap file of 16mb which we can use as secondary storage to store more pages. This requires us to create a file and have an eviction policy. Furthermore, we must include a way to read, and write to the swap file. After all of this we must be able to find free pages in the swap file and move them into memory giving threads more memory if needed.
+	<li>Phase D: Shared Region</li>
+		o Finally, this part of the projects tasks us with creating a shared region of memory for all the threads used by the shalloc command. This region acts the same as all the other memory only it is not protected or owned by a single thread.
+</ul>
+<h3>Structure</h3>
 Block / metadata
 	Size - Size of allocated request
 	isFree - Determines whether the metadata is free 
@@ -66,47 +90,9 @@ memAllign
 	4)   reorganize (10)
 {[3|3|3|2|10|] [12|0|69|69|12]}
 	Now since we have reached the end of the left chunk we can safely swap either or both chunks without worry.	
-Important Functions
-void* myallocate (int size, char FILE [], int LINE)
-	This function acted as our allocation function as well as our initial setup function. We have a global variable called first_time that allows us to set up our signal handler, initialize our page table, create/clear the Swapfile, and align our memory. Afterwards, we proceed to our findSpace function which returns a page that is now owned by that thread. This page pointer is then casted to a block where we can now read metadata. We then move through the page until we find a free space place metadata and return the pointer to the start of the data. 
-void* mydeallocate ()
-	This function is used to free the pointer. We go through the page table and check the pages and compare the two pages pointers by subtraction if the current pointer is greater than the pointer given then we search through the given page to find a pointer that matches the given pointer. Once we find a match we memset the memory to null terminators and set the metadata as free. Unfortunately, we do not have a collocating option but if we did we would use a buddy allocation system and check the next pointer location to see if it is also free and memset the entire region. Without this option we are prone to more internal fragmentation; however, with limited time it is a sacrifice that will only become a problem once several dozen threads are in use.
-void* findSpace (size_t size)
-	As mentioned previous this function find space within the page and returns a pointer to that space within the block
-int memAllignPages ()
-	This is the most crucial function by far within the program. It begins by allocating --
-void fileCreation ()
-	creates a swap file and lseeks 16mb in, and writes a null terminator, effectively creating a 16MB Swapfile for use. Upon creation our Swapfile does not require any sorting or setup. The Swapfile will be inherently sorted by the reorganize function.
-int unProtectMem ()
-	Unprotects all of memory so that read or writes can occur or allocating/freeing memory works. 
-int protectMem ()
-	Gets the current thread and locks any/ all pages that belong to it. It searches from the beginning of the page table (which is mem-aligned) and increments a counter to see the page span in memory this effectively tells us the width of a threads memory, so we can lock it. When the width of memory is calculated it, is measured in page sizes so mprotect works well with limited calculation needed.
-void swap_in_memory (void * addr1, int seekBytes) 
-	This function takes in the address of the memory to swap and the number of bytes into the file in which we must swap. Then using the temp block we will swap the data in memory with the data in the swap file one block at a time. Even with the segmentation each thread will have the ability to access ~2mb of data at max.
-void moveCurABS (int Fd, int dist)
-	Move the file pointer an absolute distance from the beginning to the distance specified. Good for progressing quickly through an array without calling multiple functions.
-void moveCur (int Fd, int dist)
-	Move the file pointer in relation to where it currently is. The file descriptor can move left (negative), or right (negative) to reset the amount, read in the readPage and the readAmount function.
-void resetFilePointer (int Fd)
-	This resets the file pointer back to the offset. This allows us to skip the beginning part of memory which is a victim of segmentation and lack of time. Since we do not want to keep in mind every time we reset the beginning segment we have this function
-void resetABS (int Fd)
-	This function resets back to zero just incase there is any reason to implement it in the future other group members have the function abstracted.
-void movePage (int Fd)
-	This moves the file descriptor exactly one page length this way we can go through the swap file in aligned segments.
-void readPage (int Fd, void * address)
-	This reads a single page worth of information to an address given. Since the file pointer is moved when reading it also resets the file pointer to the beginning of the page that way our page jump work.
-void readAmount (int Fd, void * address, int amount)
-	This is like read page, but this allows us to read as many or as few bytes as we want. This way we can read each page’s metadata for information. Additionally, this will reset the function so that again move page works accordingly. 
-void writePage (int Fd, void* address)
-	This writes whatever is at the address given for an entire page length (useful for swapping or sending things to memory.
-void swap (int Fd, void * addrRec, void* addrTemp, int swapFDist)
-	This swaps the segments according to the algorithm presented above. The first argument is the file and the next is the address where we are starting to move the information too. The second one is the address to the temporary page and the last one is the distance in pages that we want to start swapping into.
-int findFreeSwap (int Fd, void* addrTemp)
-	Searches the file to find a free block and calculate which chunk the free page falls in so we can swap accordingly. 
-int findPageSwap (int Fd, void* addrTemp, int TID)
-	Searches the swap file for the specific chunk that the threads page is in. Afterwards, it will swap accordingly.
-
-	
-	
-
-
+</div>
+<br>
+<br>
+<br>
+<br>
+<br>
